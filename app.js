@@ -190,106 +190,10 @@ function handleEcho(messageId, appId, metadata) {
 
 function handleApiAiAction(sender, action, responseText, contexts, parameters) {
 	switch (action) {
-		case "demande-service":
-
-		sendTextMessage(sender, 'Connexion à BD');
-
-		pg.connect(process.env.DATABASE_URL, function (err, client) {
-                    if (err) throw err;
-					sendTextMessage(sender, 'Connecté');
-                    let rows = [];
-                    client
-                        .query('SELECT first_name FROM users LIMIT 1')
-                        .on('row', function (row) {
-                            rows.push(row);
-                        })
-                        .on('end', () => {
-							var name= JSON.stringify(rows[0].first_name);
-                           sendTextMessage(sender, name.replace(/"/g,''));
-                        })
-        })
-        
+		
+		case "catalogue-appart-achat":
+			sendCatalogueAppartVente(sender, responseText);
 		break;
-		case "say-a":
-			//sendImageMessage(sender, 'https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg' );
-	
-			let elements= [{
-				
-				title: "Appartement1",
-				subtitle: "Un appartement de luxe",
-				item_url: "https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg",
-				image_url: "https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg",
-				
-				buttons: [{
-					type: "web_url",
-					url: "https://google.fr",
-					title: "Voir détails"
-					}, {
-					type: "postback",
-					title: "Demander plus de détails",
-					payload: "APPART_DETAILS_PAYLOAD", 
-				}]
-			},
-			{
-				title: "Appartement2",
-				subtitle: "Un appartement de luxe",
-				item_url: "https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg",
-				image_url: "https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg",
-				
-				buttons: [{
-					type: "web_url",
-					url: "https://google.fr",
-					title: "Voir détails"
-					}, {
-					type: "postback",
-					title: "Demander plus de détails",
-					payload: "APPART_DETAILS_PAYLOAD", 
-				}]
-			}
-			];
-			 sendGenericMessage(sender, elements);
-		break;
-		case "catalogue-appart":
-		pg.connect(process.env.DATABASE_URL, function (err, client) {
-                    if (err) throw err;
-					 
-					sendTextMessage(sender, 'D\'accord. Je vous envoie le catalogue des appartements dans quelques instants.')
-					
-                    let rows = [];
-                    client
-                        .query('SELECT first_name FROM users LIMIT 1')
-                        .on('row', function (row) {
-                            rows.push(row);
-                        })
-                        .on('end', () => {
-							var name= JSON.stringify(rows[0].first_name);
-							
-
-							let elements= [{
-				
-								title: name.replace(/"/g,''),
-								subtitle: "Un appartement de luxe",
-								item_url: "https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg",
-								image_url: "https://www.sarouty.ma/property/6b10464a205e70414b421ae7081f9806/488/260/MODE/f4615d/400666-e15ffo.jpg",
-								
-								buttons: [{
-									type: "web_url",
-									url: "https://google.fr",
-									title: "Voir détails"
-									}, {
-									type: "postback",
-									title: "Demander plus de détails",
-									payload: "APPART_DETAILS_PAYLOAD", 
-								}]
-							}];
-						
-							sendGenericMessage(sender, elements);
-                           
-                        })
-        })
-			
-		break;
-
 		default:
 			//unhandled action, just send back the text
 			sendTextMessage(sender, responseText);
@@ -297,6 +201,7 @@ function handleApiAiAction(sender, action, responseText, contexts, parameters) {
 }
 
 function handleMessage(message, sender) {
+	
 	switch (message.type) {
 		case 0: //text
 			sendTextMessage(sender, message.speech);
@@ -842,8 +747,22 @@ function receivedPostback(event) {
 	var payload = event.postback.payload;
 
 	switch (payload) {
-		case "APPART_DETAILS_PAYLOAD":
-			sendTextMessage(senderID, 'Détails concernant cet appart ! ');
+		case "CONTACT_PAYLOAD":
+			//sendTextMessage(senderID, '');
+		
+			let buttons= [
+				{
+					type: 'phone_number',
+                    title: 'Appeler',
+                    payload: '+212123456789'
+				}
+			];
+			sendButtonMessage(senderID, 'Vous pouvez contacter M. XXXXX, pour plus de renseignements.', buttons);
+		break;
+		case "GET_STARTED_PAYLOAD":
+			getUserInfos(senderID, (fname, lname, ppicture, locale, timezone, gender)=> {
+				addUser(senderID, fname, lname, ppicture, locale, timezone, gender);
+			});
 		break;
 		default:
 			//unindentified payload
@@ -978,6 +897,28 @@ function verifyRequestSignature(req, res, buf) {
 	}
 }
 
+
+function getUserInfos (userID, callback) {
+  request({
+    uri: `https://graph.facebook.com/v2.6/${userID}`,
+    qs: {
+      fields: 'first_name,last_name,profile_pic,locale,timezone,gender',
+      access_token: config.FB_PAGE_TOKEN
+    },
+    method: 'GET'
+  }, (error, response, body) => {
+    if (!error && response.statusCode == 200) {
+		var bodyObj= JSON.parse(body);
+      //sendTextMessage(userID, '... Informations abt user retrieved successfully ...');
+      callback(bodyObj.first_name, bodyObj.last_name, bodyObj.profile_pic, bodyObj.locale, bodyObj.timezone, bodyObj.gender);
+    } else {
+      console.error('### ERROR WHILE RETRIEVING USER INFOS ###');
+      console.error(error);
+      console.error('### END ERROR USER INFOS ###');
+    }
+  });
+};
+
 function isDefined(obj) {
 	if (typeof obj == 'undefined') {
 		return false;
@@ -994,3 +935,103 @@ function isDefined(obj) {
 app.listen(app.get('port'), function () {
 	console.log('running on port', app.get('port'))
 })
+
+
+function sendCatalogueAppartVente(sender, responseText){
+
+		pg.connect(process.env.DATABASE_URL, function (err, client) {
+                    if (err) throw err;
+					 
+					sendTextMessage(sender, 'D\'accord. Je vous envoie le catalogue des appartements à vendre dans quelques instants.')
+					
+                    let rows = [];
+                    client
+                        .query('SELECT * FROM salesforce.appartement__c')
+                        .on('row', function (row) {
+                            rows.push(row);
+                        })
+                        .on('end', () => {
+
+							var elements=[];
+
+							//Boucle
+							for(var i = 0; i <rows.length; i++) 
+							{
+								var type= JSON.stringify(rows[i].type__c);
+
+								if(type.replace(/"/g,'') === 'SELL'){
+
+										var titre= JSON.stringify(rows[i].name);
+										var prix= JSON.stringify(rows[i].price__c);
+										var img= JSON.stringify(rows[i].photo__c);
+										var lien= JSON.stringify(rows[i].link__c);
+										
+									var element= {
+										title: titre.replace(/"/g,''),
+										subtitle: prix.replace(/"/g,''),
+										image_url: img.replace(/"/g,''),
+										
+										buttons: [{
+											type: "web_url",
+											url: lien.replace(/"/g,''),
+											title: "Voir détails"
+											}, {
+											type: "postback",
+											title: "Contacter",
+											payload: "CONTACT_PAYLOAD", 
+										}]	
+									};
+										elements.push(element);
+								}
+							}
+
+
+							sendGenericMessage(sender, elements);
+                           
+                        })
+        })
+
+}
+
+
+function addUser(sender, fname, lname, ppicture, locale, timezone, gender){
+
+	pg.connect(process.env.DATABASE_URL, function (err, client) {
+                    if (err) throw err;
+                    let rows = [];
+                    client
+                        .query(`SELECT * FROM salesforce.lead WHERE fbid__c= ${sender}`)
+                        .on('row', function (row) {
+                            rows.push(row);
+                        })
+                        .on('end', () => {	
+		
+							if(rows.length===0){
+								//Add leads
+								
+								var description= 'Lead from FB';
+								var status= 'Working - Contacted';
+								var company= 'Agence XXXX';
+								var salutation= 'Mr.';
+								if(gender==='female') salutation='Ms.';
+							
+                                let sql = 'INSERT INTO salesforce.lead (firstname, photourl, description, lastname, status, company, salutation, fbid__c)' +
+                                    'VALUES ($1, $2, $3, $4, $5, $6, $7, $8)';
+
+                                client.query(sql, [
+                                   	fname,
+									ppicture,
+                                    description,
+									lname,
+                                    status,
+                                   	company,
+									salutation,
+									sender
+                                ])
+
+							}
+                        })	
+						
+        })
+	
+}
